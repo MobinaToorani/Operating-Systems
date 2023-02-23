@@ -21,14 +21,14 @@ int result[NUM_THREADS]; // Array for storing result of thread execution
 void *check_column(void *param) {
     parameters *p = (parameters *)param;
     int col = p->col;
-        int valid[ROWS+1] = {0};
+    int valid[ROWS+1] = {0};
     for (int i = 0; i < ROWS; i++) {
         int num = sudoku[i][col];
-                if (valid[num]) {
-        result[0] = 0;
-        pthread_exit(NULL);
-        }
-                valid[num] = 1;
+        if (valid[num]) {
+            result[0] = 0;
+            pthread_exit(NULL);
+            }
+            valid[num] = 1;
     }
         result[0] = 1;
     pthread_exit(NULL);
@@ -45,7 +45,7 @@ void *check_row(void *param) {
             result[1] = 0;
             pthread_exit(NULL);
         }
-    valid[num] = 1; // Mark number as valid for future comparison
+        valid[num] = 1; // Mark number as valid for future comparison
     }
     result[1] = 1; // If all numbers in row are valid, set result[1] to 1
     pthread_exit(NULL);
