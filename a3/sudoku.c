@@ -76,8 +76,8 @@ int main() {
     FILE *fp;
     fp = fopen("sample_in_sudoku.txt", "r"); // Open input file
     if (fp == NULL) { // If file cannot be opened, print error and exit
-    printf("Error: cannot open file.\n");
-    exit(1);
+        printf("Error: cannot open file.\n");
+        exit(1);
     }
     // Read the Sudoku puzzle from file into the sudoku array
     for (int i = 0; i < ROWS; i++) {
