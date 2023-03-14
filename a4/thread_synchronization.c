@@ -7,12 +7,12 @@
 #include <time.h>
 #include <semaphore.h>
 
-void logStart(char* tID);
-void logFinish(char* tID);
-void startClock();
-long getCurrentTime();
+void logStart(char* tID);//function to log that a new thread is started
+void logFinish(char* tID);//function to log that a thread has finished its time
+void startClock();//function to start program clock
+long getCurrentTime();//function to check current time since clock was started
 
-time_t programClock;
+time_t programClock;//the global timer/clock for the program
 sem_t even;
 sem_t odd;
 int remaining_odd = 0;
