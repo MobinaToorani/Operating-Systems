@@ -1,98 +1,189 @@
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <pthread.h>
-#include <semaphore.h>
+#include <sys/stat.h>
+#include <time.h>
 
-#define MAX_THREADS 1000
+sem_t running;
+sem_t even;
+sem_t odd;
 
-typedef struct thread_info {
-    char thread_id[4];  // format "txy" where x and y are digits (0-9)
-    int start_time;
-} thread_info_t;
+void logStart(char *tID); //function to log that a new thread is started
+void logFinish(char *tID); //function to log that a thread has finished its time
 
-sem_t mutex, even_sem, odd_sem;
-int next_even_id = 0, next_odd_id = 1, even_cnt = 0, odd_cnt = 0;
+void startClock(); //function to start program clock
+long getCurrentTime(); //function to check current time since clock was started
+time_t programClock; //the global timer/clock for the program
 
-void *threadRun(void *arg) {
-    thread_info_t *thread_info = (thread_info_t *) arg;
+typedef struct thread //represents a single thread, you can add more members if required
+{
+	char tid[4]; //id of the thread as read from file
+	unsigned int startTime;
+	int state;
+	pthread_t handle;
+	int retVal;
+} Thread;
 
-    // Wait until permitted to enter critical section
-    if (thread_info->thread_id[2] % 2 == 0) {
-        sem_wait(&even_sem);
-        even_cnt--;
-    } else {
-        sem_wait(&odd_sem);
-        odd_cnt--;
-    }
+//you can add more functions here if required
 
-    // Enter Critical Section
-    sem_wait(&mutex);
-    printf("[%d] Thread with ID %s is in its critical section\n", thread_info->start_time, thread_info->thread_id);
-    sem_post(&mutex);
-
-    // Exit Critical Section
-    sem_wait(&mutex);
-    printf("[%d] Thread with ID %s is finished.\n", thread_info->start_time, thread_info->thread_id);
-    sem_post(&mutex);
-
-    // Release Semaphore and Unlock next thread if possible
-    if (thread_info->thread_id[2] % 2 == 0) {
-        if (odd_cnt > 0)
-            sem_post(&odd_sem);
-        else
-            sem_post(&even_sem);
-    } else {
-        if (even_cnt > 0)
-            sem_post(&even_sem);
-        else
-            sem_post(&odd_sem);
-    }
-
-    free(arg);
-    pthread_exit(NULL);
-}
+int threadsLeft(Thread *threads, int threadCount);
+int threadToStart(Thread *threads, int threadCount);
+void* threadRun(void *t); //the thread function, the code executed by each thread
+int readFile(char *fileName, Thread **threads); //function to read the file content and build array of threads
 
 int main(int argc, char *argv[]) {
-    FILE *fp;
-    char line[100];
-    thread_info_t *thread_info[MAX_THREADS];
-    int count = 0, i;
+    sem_init(&running, 0, 1);
+    sem_init(&odd, 0, 1);
+    sem_init(&even, 0, 0);
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s input_file_name\n", argv[0]);
-        exit(EXIT_FAILURE);
+	if (argc < 2) {
+		printf("Input file name missing...exiting with error code -1\n");
+		return -1;
+	}
+
+	//you can add some suitable code anywhere in main() if required
+
+	Thread *threads = NULL;
+	int threadCount = readFile(argv[1], &threads);
+
+	startClock();
+	while (threadsLeft(threads, threadCount) > 0) //put a suitable condition here to run your program
+	{
+		//you can add some suitable code anywhere in this loop if required
+
+		int i = 0;
+		while ((i = threadToStart(threads, threadCount)) > -1) {
+			//you can add some suitable code anywhere in this loop if required
+
+			threads[i].state = 1;
+			threads[i].retVal = pthread_create(&(threads[i].handle), NULL,
+					threadRun, &threads[i]);
+		}
+	}
+	return 0;
+}
+
+int readFile(char *fileName, Thread **threads) //do not modify this method
+{
+	FILE *in = fopen(fileName, "r");
+	if (!in) {
+		printf(
+				"Child A: Error in opening input file...exiting with error code -1\n");
+		return -1;
+	}
+
+	struct stat st;
+	fstat(fileno(in), &st);
+	char *fileContent = (char*) malloc(((int) st.st_size + 1) * sizeof(char));
+	fileContent[0] = '\0';
+	while (!feof(in)) {
+		char line[100];
+		if (fgets(line, 100, in) != NULL) {
+			strncat(fileContent, line, strlen(line));
+		}
+	}
+	fclose(in);
+
+	char *command = NULL;
+	int threadCount = 0;
+	char *fileCopy = (char*) malloc((strlen(fileContent) + 1) * sizeof(char));
+	strcpy(fileCopy, fileContent);
+	command = strtok(fileCopy, "\r\n");
+	while (command != NULL) {
+		threadCount++;
+		command = strtok(NULL, "\r\n");
+	}
+	*threads = (Thread*) malloc(sizeof(Thread) * threadCount);
+
+	char *lines[threadCount];
+	command = NULL;
+	int i = 0;
+	command = strtok(fileContent, "\r\n");
+	while (command != NULL) {
+		lines[i] = malloc(sizeof(command) * sizeof(char));
+		strcpy(lines[i], command);
+		i++;
+		command = strtok(NULL, "\r\n");
+	}
+
+	for (int k = 0; k < threadCount; k++) {
+		char *token = NULL;
+		int j = 0;
+		token = strtok(lines[k], ";");
+		while (token != NULL) {
+//if you have extended the Thread struct then here
+//you can do initialization of those additional members
+//or any other action on the Thread members
+			(*threads)[k].state = 0;
+			if (j == 0)
+				strcpy((*threads)[k].tid, token);
+			if (j == 1)
+				(*threads)[k].startTime = atoi(token);
+			j++;
+			token = strtok(NULL, ";");
+		}
+	}
+	return threadCount;
+}
+
+void logStart(char *tID) {
+	printf("[%ld] New Thread with ID %s is started.\n", getCurrentTime(), tID);
+}
+
+void logFinish(char *tID) {
+	printf("[%ld] Thread with ID %s is finished.\n", getCurrentTime(), tID);
+}
+
+int threadsLeft(Thread *threads, int threadCount) {
+	int remainingThreads = 0;
+	for (int k = 0; k < threadCount; k++) {
+		if (threads[k].state > -1)
+			remainingThreads++;
+	}
+	return remainingThreads;
+}
+
+int threadToStart(Thread *threads, int threadCount) {
+	for (int k = 0; k < threadCount; k++) {
+		if (threads[k].state == 0 && threads[k].startTime == getCurrentTime())
+			return k;
+	}
+	return -1;
+}
+
+void* threadRun(void *t)
+{
+    Thread* thread = (Thread*) t;
+
+    // Wait for the running semaphore
+    sem_wait(&running);
+
+    // Determine whether this is an odd or even thread
+    int isOdd = atoi(thread->tid) % 2 == 1;
+
+    // Wait for the appropriate semaphore
+    if (isOdd) {
+        sem_wait(&odd);
+    } else {
+        sem_wait(&even);
     }
 
-    fp = fopen(argv[1], "r");
-    if (fp == NULL) {
-        fprintf(stderr, "Cannot open input file %s\n", argv[1]);
-        exit(EXIT_FAILURE);
+    // Execute the critical section
+    logStart(thread->tid);
+    printf("[%ld] Thread %s is in its critical section\n", getCurrentTime(), thread->tid);
+    logFinish(thread->tid);
+
+    // Release the appropriate semaphore
+    if (isOdd) {
+        sem_post(&even);
+    } else {
+        sem_post(&odd);
     }
 
-    sem_init(&mutex, 0, 1);
-    sem_init(&even_sem, 0, 0);
-    sem_init(&odd_sem, 0, 0);
+    // Release the running semaphore
+    sem_post(&running);
 
-    while (fgets(line, sizeof(line), fp) != NULL) {
-        thread_info_t *t_info = malloc(sizeof(thread_info_t));
-        sscanf(line, "%d %s", &t_info->start_time, t_info->thread_id);
-        thread_info[count++] = t_info;
-    }
-
-    fclose(fp);
-
-    pthread_t tid[MAX_THREADS];
-    for (i = 0; i < count; i++) {
-        pthread_create(&tid[i], NULL, threadRun, (void *) thread_info[i]);
-    }
-
-    for (i = 0; i < count; i++) {
-        pthread_join(tid[i], NULL);
-    }
-
-    sem_destroy(&mutex);
-    sem_destroy(&even_sem);
-    sem_destroy(&odd_sem);
-
-    return 0;
+    return NULL;
 }
